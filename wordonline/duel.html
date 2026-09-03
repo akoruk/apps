@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>A challenge for you — Oh My Word!</title>
+<meta name="description" content="Someone has challenged you to a board in Oh My Word! — the same letters, and a score to beat.">
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0 auto; padding: 48px 20px 64px; max-width: 480px;
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #1c1c1e; background: #fff; text-align: center;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { color: #f2f2f7; background: #1c1c1e; }
+    a { color: #7aa7ff; }
+    .card { background: #2c2c2e; }
+    a.secondary { color: #f2f2f7; border-color: #48484a; }
+  }
+  [hidden] { display: none !important; }
+  h1 { font-size: 28px; margin: 0 0 8px; }
+  p { margin: 0 0 16px; }
+  .tiles { font-size: 34px; letter-spacing: 4px; margin: 0 0 24px; }
+  .card {
+    margin: 0 0 8px; padding: 20px; border-radius: 16px; background: #f2f2f7;
+  }
+  .score { font-size: 40px; font-weight: 700; line-height: 1.1; }
+  .who { font-size: 17px; margin: 0; }
+  .detail { color: #8e8e93; font-size: 15px; margin: 4px 0 0; }
+  .actions { margin: 32px 0 24px; }
+  a.button {
+    display: block; margin: 0 auto 12px; max-width: 320px;
+    padding: 15px 24px; border-radius: 14px;
+    font-size: 17px; font-weight: 600; text-decoration: none;
+    background: #0a58ca; color: #fff;
+  }
+  a.secondary { background: transparent; color: #1c1c1e; border: 1px solid #d1d1d6; }
+  .hint { color: #8e8e93; font-size: 14px; }
+  .back { display: inline-block; margin-top: 40px; font-size: 15px; }
+  a { color: #0a58ca; }
+</style>
+</head>
+<body>
+
+<p class="tiles">🟪🟩🟨🟦</p>
+
+<h1>A challenge for you</h1>
+
+<div class="card" id="card" hidden>
+  <p class="score" id="score"></p>
+  <p class="who" id="who"></p>
+  <p class="detail" id="detail"></p>
+</div>
+
+<p id="intro">
+  Someone has sent you a board in <strong>Oh My Word!</strong> — the same
+  letters, in the same order, and a score to beat.
+</p>
+
+<p class="hint" id="missing" hidden>
+  This link lost its board on the way here — messaging apps sometimes cut long
+  links in half. Ask whoever sent it to share the challenge again, or come and
+  play anyway.
+</p>
+
+<div class="actions">
+  <a class="button" id="open" href="#">Open in Oh My Word!</a>
+  <a class="button secondary" id="install"
+     href="https://apps.apple.com/app/id6475891520">Get the game — free</a>
+</div>
+
+<p class="hint" id="hint">
+  Already have it? Tap <em>Open in Oh My Word!</em> Just installed it? Come back
+  to this page and tap it again — the board is waiting.
+</p>
+
+<a class="back" href="../index.html">← All apps</a>
+
+<script>
+  (function () {
+    // The app registers a different URL scheme per build. Prod is the default;
+    // a test build appends its own so the loop can be tried end to end.
+    var params = new URLSearchParams(window.location.search);
+    var requested = params.get('s') || '';
+    var scheme = /^[a-z]+$/.test(requested) ? requested : 'wordonline';
+
+    var open = document.getElementById('open');
+    var card = document.getElementById('card');
+    var intro = document.getElementById('intro');
+    var hint = document.getElementById('hint');
+    var missing = document.getElementById('missing');
+
+    render();
+
+    // Two challenges from the same person are two links to this page differing
+    // only in their fragment, and the browser answers the second one without
+    // reloading anything. Without this, tapping it would show the first
+    // challenge again — the wrong score, and the wrong board behind the button.
+    window.addEventListener('hashchange', render);
+
+    function render() {
+      // The board rides in the fragment, so it is never sent to the server: the
+      // challenge stays between the two players.
+      var code = window.location.hash.replace(/^#/, '');
+      var duel = code ? decode(code) : null;
+
+      if (!duel) {
+        // The app refuses a damaged link rather than opening it onto letters
+        // the challenger never saw, so this page says the same thing. Offering
+        // "Open in Oh My Word!" here would only fail silently in the app.
+        card.hidden = true;
+        intro.hidden = true;
+        hint.hidden = true;
+        open.hidden = true;
+        missing.hidden = false;
+        return;
+      }
+
+      open.href = scheme + '://duel/' + encodeURIComponent(code);
+
+      // Say what the challenge actually is. Most people reading this do not
+      // have the game yet, and "beat 187" is a better reason to install it than
+      // anything this page could say on its own.
+      document.getElementById('score').textContent = duel.score;
+      document.getElementById('who').textContent = duel.name + ' scored this';
+      document.getElementById('detail').textContent =
+        duel.words === 1 ? 'with 1 word' : 'with ' + duel.words + ' words';
+      intro.textContent = 'Same letters, in the same order. Beat ' + duel.score + '.';
+
+      card.hidden = false;
+      intro.hidden = false;
+      hint.hidden = false;
+      open.hidden = false;
+      missing.hidden = true;
+    }
+
+    // Deliberately no automatic redirect. Roughly half the people opening this
+    // do not have the app, and a jump to an unknown URL scheme greets them with
+    // a Safari error before they have seen the button that installs it.
+
+    /// Mirrors `BoardDuel.init?(code:)`. Both sides have to accept and refuse
+    /// exactly the same links, or the page promises a game the app declines.
+    function decode(code) {
+      var payload;
+
+      try {
+        var base64 = code.replace(/-/g, '+').replace(/_/g, '/');
+        while (base64.length % 4) { base64 += '='; }
+        var bytes = Uint8Array.from(atob(base64), function (character) {
+          return character.charCodeAt(0);
+        });
+        payload = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+      } catch (error) {
+        return null;
+      }
+
+      var parts = payload.split('|');
+
+      // Version, checksum, then the body — which keeps its own separators, and
+      // so any the player put in their name.
+      if (parts.length < 7 || parts[0] !== '1') {
+        return null;
+      }
+
+      var body = parts.slice(2).join('|');
+
+      if (parts[1] !== checksum(body)) {
+        return null;
+      }
+
+      var fields = body.split('|');
+      var name = fields.slice(4).join('|');
+
+      if (!/^[0-9a-f]{16}$/.test(fields[0])
+          || !/^[0-9]+$/.test(fields[2])
+          || !/^[0-9]+$/.test(fields[3])
+          || !name) {
+        return null;
+      }
+
+      return { name: name, score: fields[2], words: Number(fields[3]) };
+    }
+
+    /// FNV-1a, 64-bit, folded to twenty-four bits — the same six hexadecimal
+    /// digits `BoardDuel` writes.
+    function checksum(text) {
+      var mask = 0xFFFFFFFFFFFFFFFFn;
+      var hash = 0xCBF29CE484222325n;
+      var bytes = new TextEncoder().encode(text);
+
+      for (var index = 0; index < bytes.length; index++) {
+        hash ^= BigInt(bytes[index]);
+        hash = (hash * 0x100000001B3n) & mask;
+      }
+
+      var folded = (hash ^ (hash >> 24n) ^ (hash >> 48n)) & 0xFFFFFFn;
+      return folded.toString(16).padStart(6, '0');
+    }
+  })();
+</script>
+
+</body>
+</html>
